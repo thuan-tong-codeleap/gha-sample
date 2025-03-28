@@ -1,0 +1,88 @@
+name: Release semantic version
+
+on:
+  push:
+    branches:
+      - release
+
+concurrency:
+  group: release-semver
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag Release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.get-release-version.outputs.version-name	 }}
+      tag-created: ${{ steps.get-release-version.outputs.tag-created	 }}
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: wemogy/get-release-version-action@v4.3.2
+        id: get-release-version
+        with:
+          prefix: "v"
+          suffix: "pre"
+          create-tag: "true"
+          git-username: "jtl"
+          git-email: "npm@jtl-cloud.com"
+          mode: "semantic"
+
+  propagate_to_qa:
+    name: Propagate to QA
+    runs-on: ubuntu-22.04
+    needs: [tag]
+    # Only run if the 'tag' job actually outputted a version (i.e., a tag was created)
+    if: needs.tag.outputs.tag-created
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout Code at Pre-Release Tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.version }}
+          fetch-depth: 0
+
+      - name: Create Branch for QA PR
+        id: qa_branch
+        run: |
+          new_tag=${{ needs.tag.outputs.version }}
+          # Branch name includes tag and run ID for uniqueness
+          branch_name="release-to-qa-${new_tag}-${{ github.run_id }}"
+          git checkout -b $branch_name
+          git push origin $branch_name
+          echo "branch_name=${branch_name}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Create and Merge Pull Request to release-qa
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ steps.qa_branch.outputs.branch_name }}
+          BASE_BRANCH: release-qa
+          NEW_TAG: ${{ needs.tag.outputs.version }}
+          PR_TITLE: "Auto-propagate pre-release ${{ needs.tag.outputs.version }} to release-qa"
+          PR_BODY: "Automatic propagation from release branch for pre-release tag ${{ needs.tag.outputs.version }} (Commit: ${{ steps.get_sha.outputs.sha }})."
+        run: |
+          pr_url=$(gh pr create \
+            --head "$HEAD_BRANCH" \
+            --base "$BASE_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --repo "$GITHUB_REPOSITORY")
+
+          if [ -z "$pr_url" ]; then
+            echo "Failed to create Pull Request. It might already exist for this branch combination, or another error occurred."
+            exit 1 # Exit with error
+          else
+            echo "PR created: $pr_url"
+            echo "Attempting to auto-merge PR..."
+            gh pr merge "$pr_url" --merge --delete-branch || (echo "ERROR: Failed to auto-merge PR $pr_url. Manual merge might be required." && exit 1)
+            echo "PR merged and branch $HEAD_BRANCH deleted successfully."
+          fi
