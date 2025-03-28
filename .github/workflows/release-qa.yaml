@@ -1,0 +1,49 @@
+name: Release to QA
+
+on:
+  push:
+    branches:
+      - release-qa
+
+concurrency:
+  group: release-qa
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag Release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.get-release-version.outputs.version-name	 }}
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: wemogy/get-release-version-action@v4.3.2
+        id: get-release-version
+        with:
+          prefix: "v"
+          suffix: "qa"
+          bumping-suffix: "hotfix"
+          create-tag: "true"
+          git-username: "jtl"
+          git-email: "npm@jtl-cloud.com"
+          mode: "semantic"
+
+  build:
+    name: Build for QA
+    runs-on: ubuntu-22.04
+    needs: [tag]
+    steps:
+     - run: echo Build
+
+  release:
+    name: Release for QA
+    runs-on: ubuntu-22.04
+    needs: [tag]
+    steps:
+     - run: echo Release
