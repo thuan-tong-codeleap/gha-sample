@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   tag-semver:
-    name: Tag Release
+    name: Tag Release for Pre-release
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -92,7 +92,7 @@ jobs:
             echo "PR merged and branch $HEAD_BRANCH deleted successfully."
           fi
   tag-qa:
-    name: Tag Release
+    name: Tag Release for QA
     needs: [ propagate-to-qa ]
     runs-on: ubuntu-22.04
     permissions:
@@ -103,6 +103,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v4
         with:
+          ref: release-qa
           fetch-depth: 0
 
       - uses: wemogy/get-release-version-action@v4.3.2
@@ -126,6 +127,6 @@ jobs:
   release:
     name: Release for QA
     runs-on: ubuntu-22.04
-    needs: [tag-qa]
+    needs: [build-qa]
     steps:
      - run: echo Release
