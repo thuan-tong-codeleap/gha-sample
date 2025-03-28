@@ -36,20 +36,14 @@ jobs:
 
   build:
     name: Build for QA
+    runs-on: ubuntu-22.04
     needs: [tag]
-    uses: ./.github/workflows/workflow-build.yaml
-    with:
-      version: ${{ needs.tag.outputs.version }}
-      environment-name: 'QA'
-      upload: true
-    secrets: inherit
+    steps:
+     - run: echo Build
 
   release:
     name: Release for QA
-    needs: [tag, build]
-    uses: ./.github/workflows/workflow-release.yaml
-    with:
-      version: ${{ needs.tag.outputs.version }}
-      environment-name: 'QA'
-      environment: 'qa'
-    secrets: inherit
+    runs-on: ubuntu-22.04
+    needs: [tag]
+    steps:
+     - run: echo Release
