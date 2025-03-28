@@ -35,7 +35,7 @@ jobs:
           git-email: "npm@jtl-cloud.com"
           mode: "semantic"
 
-  propagate_to_qa:
+  propagate-to-qa:
     name: Propagate to QA
     runs-on: ubuntu-22.04
     needs: [tag-semver]
@@ -93,7 +93,7 @@ jobs:
           fi
   tag-qa:
     name: Tag Release
-    if: github.ref == 'refs/heads/release-qa' && github.event_name == 'push'
+    needs: [ propagate-to-qa ]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
