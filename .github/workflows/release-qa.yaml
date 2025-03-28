@@ -1,17 +1,99 @@
-name: Release to QA
+name: Pre-release and release to QA
 
 on:
   push:
     branches:
+      - release
       - release-qa
 
 concurrency:
-  group: release-qa
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  tag:
+  tag-semver:
     name: Tag Release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.get-release-version.outputs.version-name	 }}
+      tag-created: ${{ steps.get-release-version.outputs.tag-created	 }}
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: wemogy/get-release-version-action@v4.3.2
+        id: get-release-version
+        with:
+          prefix: "v"
+          suffix: "pre"
+          create-tag: "true"
+          git-username: "jtl"
+          git-email: "npm@jtl-cloud.com"
+          mode: "semantic"
+
+  propagate_to_qa:
+    name: Propagate to QA
+    runs-on: ubuntu-22.04
+    needs: [tag-semver]
+    # Only run if the 'tag' job actually outputted a version (i.e., a tag was created)
+    if: needs.tag-semver.outputs.tag-created
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout Code at Pre-Release Tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag-semver.outputs.version }}
+          fetch-depth: 0
+
+      - name: Get Tagged Commit SHA
+        id: get_sha
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Branch for QA PR
+        id: qa_branch
+        run: |
+          new_tag=${{ needs.tag-semver.outputs.version }}
+          # Branch name includes tag and run ID for uniqueness
+          branch_name="release-to-qa-${new_tag}-${{ github.run_id }}"
+          git checkout -b $branch_name
+          git push origin $branch_name
+          echo "branch_name=${branch_name}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Create and Merge Pull Request to release-qa
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ steps.qa_branch.outputs.branch_name }}
+          BASE_BRANCH: release-qa
+          NEW_TAG: ${{ needs.tag-semver.outputs.version }}
+          PR_TITLE: "Auto-propagate pre-release ${{ needs.tag-semver.outputs.version }} to release-qa"
+          PR_BODY: "Automatic propagation from release branch for pre-release tag ${{ needs.tag-semver.outputs.version }} (Commit: ${{ steps.get_sha.outputs.sha }})."
+        run: |
+          pr_url=$(gh pr create \
+            --head "$HEAD_BRANCH" \
+            --base "$BASE_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --repo "$GITHUB_REPOSITORY")
+
+          if [ -z "$pr_url" ]; then
+            echo "Failed to create Pull Request. It might already exist for this branch combination, or another error occurred."
+            exit 1 # Exit with error
+          else
+            echo "PR created: $pr_url"
+            echo "Attempting to auto-merge PR..."
+            gh pr merge "$pr_url" --merge --delete-branch || (echo "ERROR: Failed to auto-merge PR $pr_url. Manual merge might be required." && exit 1)
+            echo "PR merged and branch $HEAD_BRANCH deleted successfully."
+          fi
+  tag-qa:
+    name: Tag Release
+    if: github.ref == 'refs/heads/release-qa' && github.event_name == 'push'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -37,13 +119,13 @@ jobs:
   build:
     name: Build for QA
     runs-on: ubuntu-22.04
-    needs: [tag]
+    needs: [tag-qa]
     steps:
      - run: echo Build
 
   release:
     name: Release for QA
     runs-on: ubuntu-22.04
-    needs: [tag]
+    needs: [tag-qa]
     steps:
      - run: echo Release
