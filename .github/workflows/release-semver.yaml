@@ -92,4 +92,6 @@ jobs:
     name: Release to QA
     needs: [propagate_to_qa]
     uses: ./.github/workflows/release-qa.yaml
+    permissions:
+      contents: write
         
