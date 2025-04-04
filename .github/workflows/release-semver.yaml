@@ -90,8 +90,10 @@ jobs:
   # Default GITHUB_TOKEN will not trigger the on_push event so we have to explicitly call it here
   release_qa:
     name: Release to QA
-    needs: [propagate_to_qa]
+    needs: [tag, propagate_to_qa]
+    if: needs.tag.outputs.tag-created
     uses: ./.github/workflows/release-qa.yaml
     permissions:
       contents: write
+    secrets: inherit
         

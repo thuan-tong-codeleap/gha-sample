@@ -34,14 +34,23 @@ jobs:
           create-tag: "true"
           git-username: "jtl"
           git-email: "npm@jtl-cloud.com"
+          
           mode: "semantic"
+      - name: Check if secret is empty
+        run: |
+          if [ -z "${{ secrets.TEST_SECRET }}" ]; then
+            echo "TEST_SECRET is empty or not set"
+            exit 1  # Fail the step (optional)
+          else
+            echo "TEST_SECRET is set (but value is hidden for security)"
+          fi
 
   build:
     name: Build for QA
     runs-on: ubuntu-22.04
     needs: [tag-qa]
     steps:
-     - run: echo Build
+     - run: echo ${{ secrets.TEST_SECRET }}
 
   release:
     name: Release for QA
